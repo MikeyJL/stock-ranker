@@ -6,7 +6,7 @@ import yahoo_fin.stock_info as si
 from PyInquirer import prompt, Separator
 import csv
 import math
-from scipy import stats
+import os.path
 
 def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█', printEnd = '\r'):
     percent = ('{0:.' + str(decimals) + 'f}').format(100 * (iteration / float(total)))
@@ -56,6 +56,15 @@ get_stocks_q = [
     }
 ]
 get_stocks_a = prompt(get_stocks_q)
+force_get_stocks_q = [
+    {
+        'type': 'confirm',
+        'message': 'If data exists, would you like to overwrite?',
+        'name': 'force_fetch',
+        'default': True
+    }
+]
+force_get_stocks_a = prompt(force_get_stocks_q)
 if get_stocks_a['fetch']:
     stocks_a = prompt(stocks_q)
     if 'Custom' == stocks_a['stocks']:
@@ -66,7 +75,7 @@ if get_stocks_a['fetch']:
 today = dt.date.today() - dt.timedelta(days = 1)
 dates_split = [1, 3, 6, 12]
 dates_arr = [today]
-failed_tickers, hqm_data, hqm_change, tickers_loss = [], [], [], []
+failed_tickers, hqm_change, tickers_loss = [], [], []
 data_header = ['Ticker', 'Recent', '1M', '3M', '6M', '12M']
 
 for i in dates_split:
@@ -80,25 +89,31 @@ for i in dates_split:
         date = date - dt.timedelta(days = 1)
 
 if get_stocks_a['fetch']:
-    with open('overview.csv', mode='w') as overview_file:
-        overview_writer = csv.writer(overview_file, delimiter=',', quotechar='"')
-        overview_writer.writerow(data_header)
+    if os.path.exists('overview.csv') == False or force_get_stocks_a['force_fetch']:
+        with open('overview.csv', mode='w') as overview_file:
+            overview_writer = csv.writer(overview_file, delimiter=',', quotechar='"')
+            overview_writer.writerow(data_header)
     for i, ticker in enumerate(stocks):
         printProgressBar(i + 1, len(stocks), prefix = 'Progress:', suffix = ticker, length = 50)
-        price_builder = [ticker]
-        try:
-            for i in range(len(data_header) - 1):
-                stock_data = si.get_data(ticker,
-                                         start_date=dates_arr[i] - dt.timedelta(days = 7),
-                                         end_date=dates_arr[i])
-                stock_data.reset_index(inplace=True)
-                price_builder.append(round(float(stock_data['close'][-1:]), 4))
-            hqm_data.append(price_builder)
+        with open('overview.csv', 'r') as overview_read:
+            for row in overview_read:
+                if ticker in row:
+                    force_get_data = False
+        if force_get_data:
+            price_builder = [ticker]
+            try:
+                for i in range(len(data_header) - 1):
+                    stock_data = si.get_data(ticker,
+                                            start_date=dates_arr[i] - dt.timedelta(days = 7),
+                                            end_date=dates_arr[i])
+                    stock_data.reset_index(inplace=True)
+                    price_builder.append(round(float(stock_data['close'][-1:]), 4))
+            except:
+                failed_tickers.append(ticker)
             with open('overview.csv', mode='a') as overview_file:
-                overview_writer = csv.writer(overview_file, delimiter=',', quotechar='"')
-                overview_writer.writerow(price_builder)
-        except:
-            failed_tickers.append(ticker)
+                    overview_writer = csv.writer(overview_file, delimiter=',', quotechar='"')
+                    overview_writer.writerow(price_builder)
+        force_get_data = True
     print(f"\nFailed tickers: {', '.join(failed_tickers)}\n")
 hqm_data = np.array(pd.read_csv('overview.csv'))
 
