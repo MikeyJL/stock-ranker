@@ -4,6 +4,7 @@ import requests as rq
 import datetime as dt
 import yahoo_fin.stock_info as si
 from PyInquirer import prompt, Separator
+import csv
 import math
 from scipy import stats
 
@@ -65,11 +66,7 @@ if get_stocks_a['fetch']:
 today = dt.date.today() - dt.timedelta(days = 1)
 dates_split = [1, 3, 6, 12]
 dates_arr = [today]
-weekend_adj = 0
 failed_tickers, hqm_data, hqm_change, tickers_loss = [], [], [], []
-
-if dates_arr[0].weekday() == 6:
-    weekend_adj = 1
 
 for i in dates_split:
     date = today.replace(year = today.year if today.month - i > 0 else today.year - 1,
@@ -82,25 +79,27 @@ for i in dates_split:
         date = date - dt.timedelta(days = 1)
 
 if get_stocks_a['fetch']:
+    with open('overview.csv', mode='w') as overview_file:
+        overview_writer = csv.writer(overview_file, delimiter=',', quotechar='"')
+        overview_writer.writerow(['Ticker', 'Most recent', '1-Month', '3-Month', '6-Month', '12-Month'])
     for i, ticker in enumerate(stocks):
         printProgressBar(i + 1, len(stocks), prefix = 'Progress:', suffix = ticker, length = 50)
         price_builder = [ticker]
         try:
             for i in range(5):
                 stock_data = si.get_data(ticker,
-                                            start_date=dates_arr[i] - dt.timedelta(days = weekend_adj),
-                                            end_date=dates_arr[i])
+                                         start_date=dates_arr[i] - dt.timedelta(days = 7),
+                                         end_date=dates_arr[i])
                 stock_data.reset_index(inplace=True)
-                price_builder.append(round(float(stock_data['close']), 4))
+                price_builder.append(round(float(stock_data['close'][-1:]), 4))
             hqm_data.append(price_builder)
-            if 'Overview' in outputs_a['outputs']:
-                overview_df = pd.DataFrame(hqm_data, columns=['Ticker', 'Most recent', '1-Month', '3-Month', '6-Month', '12-Month'])
-                overview_df.to_csv('overview.csv', index=False)
+            with open('overview.csv', mode='a') as overview_file:
+                overview_writer = csv.writer(overview_file, delimiter=',', quotechar='"')
+                overview_writer.writerow(price_builder)
         except:
             failed_tickers.append(ticker)
     print(f"\nFailed tickers: {', '.join(failed_tickers)}\n")
-else:
-    hqm_data = np.array(pd.read_csv('overview.csv'))
+hqm_data = np.array(pd.read_csv('overview.csv'))
 
 for ticker_idx, ticker_arr in enumerate(hqm_data):
     hqm_change.append([ticker_arr[0]])
